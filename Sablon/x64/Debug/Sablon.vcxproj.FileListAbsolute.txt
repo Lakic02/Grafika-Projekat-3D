@@ -2,3 +2,4 @@ C:\Users\Vasilije\Downloads\RG V9\V9\x64\Debug\glew32.dll
 C:\Users\Vasilije\Downloads\RG V9\Vezbe 7\x64\Debug\glew32.dll
 C:\Users\Vasilije\Documents\Vasa\Asistent\Ponedeljko\W7\V6 Solution\x64\Debug\glew32.dll
 C:\Users\Vasilije\Documents\Vasa\Asistent\Ponedeljko\W7\V7\x64\Debug\glew32.dll
+C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\x64\Debug\glew32.dll
