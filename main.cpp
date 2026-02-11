@@ -3,7 +3,7 @@
 #include <string>
 #include <thread>
 #include <chrono>
-#include <algorithm> // Za std::shuffle
+#include <algorithm> // Za std::shuffle, std::remove_if
 #include <random>    // Za moderni random
 #include <ctime>     // Za seeding
 
@@ -28,8 +28,8 @@ Seat cinemaSeats[5][10];
 struct Viewer {
     glm::vec3 currentPos;
     glm::vec3 targetPos;
-    bool reachedRow = false;
-    bool reachedSeat = false;
+    bool reachedRow = false; // Kod ulaska: stigao do dubine reda. Kod izlaska: stigao do hodnika (X).
+    bool reachedSeat = false; // Kod ulaska: stigao na sediste. Kod izlaska: stigao do vrata (Z).
     float speed = 1.0f;
 };
 std::vector<Viewer> visitors;
@@ -60,7 +60,7 @@ float lastX = 0, lastY = 0;
 float deltaTime = 0.0f, lastFrame = 0.0f;
 bool mousePressed = false;
 
-// Pozicija vrata za spawn
+// Pozicija vrata za spawn i izlaz
 glm::vec3 doorPosSpawn = glm::vec3(11.0f, 0.0f, -12.0f);
 
 void spawnVisitors() {
@@ -80,12 +80,12 @@ void spawnVisitors() {
     if (totalOccupied == 0) return;
 
     std::default_random_engine engine(static_cast<unsigned int>(time(0)));
-    std::uniform_int_distribution<int> countDist(1, totalOccupied);
-    int spawnCount = countDist(engine);
+    // Spawnujemo onoliko ljudi koliko ima kupljenih/rezervisanih mesta
+    int spawnCount = totalOccupied;
 
     std::shuffle(occupiedSeatPositions.begin(), occupiedSeatPositions.end(), engine);
 
-    std::uniform_real_distribution<float> speedDist(0.8f, 1.0f);
+    std::uniform_real_distribution<float> speedDist(0.8f, 1.2f);
     float baseSpeed = 3.5f;
 
     for (int i = 0; i < spawnCount; i++) {
@@ -111,7 +111,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         if (key == GLFW_KEY_F1) currentState = START;
         if (key == GLFW_KEY_F2) currentState = ENTER;
         if (key == GLFW_KEY_F3) currentState = PROJECTION;
-        if (key == GLFW_KEY_F4) currentState = EXIT;
+        if (key == GLFW_KEY_F4) {
+            currentState = EXIT;
+            for (auto& v : visitors) { v.reachedRow = false; v.reachedSeat = false; }
+        }
 
         if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
             if (currentState != START) return;
@@ -162,8 +165,6 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) nextPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
 
-    // --- LOGIKA KOLIZIJE (Kamera ne moze kroz zidove) ---
-    // Granice sale: X[-14, 14], Y[0.5, 9.5], Z[-11.5, 24]
     nextPos.x = glm::clamp(nextPos.x, -14.0f, 14.0f);
     nextPos.y = glm::clamp(nextPos.y, 0.5f, 9.5f);
     nextPos.z = glm::clamp(nextPos.z, -11.5f, 14.9f);
@@ -328,9 +329,61 @@ int main(void) {
                 projectionTimer = 0.0f;
             }
         }
+        else if (currentState == EXIT) {
+            // --- ZADATAK 1: LOGIKA IZLASKA ---
+            for (auto& v : visitors) {
+                if (!v.reachedRow) { // Prva faza izlaska: Od sedišta do hodnika (X osa)
+                    if (std::abs(v.currentPos.x - doorPosSpawn.x) > 0.05f) {
+                        float dir = (doorPosSpawn.x > v.currentPos.x) ? 1.0f : -1.0f;
+                        v.currentPos.x += dir * v.speed * deltaTime;
+                    }
+                    else {
+                        v.currentPos.x = doorPosSpawn.x;
+                        v.reachedRow = true; // Stigao u hodnik
+                    }
+                }
+                else if (!v.reachedSeat) { // Druga faza: Niz hodnik do vrata (Z osa i Y visina)
+                    if (std::abs(v.currentPos.z - doorPosSpawn.z) > 0.05f) {
+                        float dir = (doorPosSpawn.z > v.currentPos.z) ? 1.0f : -1.0f;
+                        v.currentPos.z += dir * v.speed * deltaTime;
+                        // Logika za stepenice unazad
+                        int currentStairRow = (int)(v.currentPos.z / 1.5f + 0.5f);
+                        if (currentStairRow < 0) currentStairRow = 0;
+                        v.currentPos.y = currentStairRow * 0.5f;
+                    }
+                    else {
+                        v.currentPos.z = doorPosSpawn.z;
+                        v.currentPos.y = doorPosSpawn.y;
+                        v.reachedSeat = true; // Stigao do vrata
+                    }
+                }
+            }
+
+            // --- ZADATAK 2: BRISANJE I RESET NA START ---
+            visitors.erase(std::remove_if(visitors.begin(), visitors.end(), [](const Viewer& v) {
+                return v.reachedSeat; // Brišemo one koji su stigli do vrata
+                }), visitors.end());
+
+            if (visitors.empty()) {
+                currentState = START;
+                // Opciono: Resetuj sedišta za novu turu
+                for (int r = 0; r < 5; r++) for (int c = 0; c < 10; c++) {
+                    cinemaSeats[r][c].isReserved = false;
+                    cinemaSeats[r][c].isBought = false;
+                }
+            }
+        }
 
         if (currentState == PROJECTION) {
             projectionTimer += deltaTime;
+            if (projectionTimer >= 20.0f) {
+                currentState = EXIT;
+                // Resetujemo flagove za svakog posetioca da bi krenuli ispočetka putanju izlaska
+                for (auto& v : visitors) {
+                    v.reachedRow = false;
+                    v.reachedSeat = false;
+                }
+            }
         }
 
         // --- LOGIKA SVETLA ---
@@ -368,7 +421,7 @@ int main(void) {
         glBindVertexArray(VAO);
         glUniform1i(useTexLoc, 0);
 
-        // --- 1. POD (Braon) ---
+        // --- 1. POD ---
         glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 6.5f));
         floorModel = glm::rotate(floorModel, glm::radians(-90.0f), glm::vec3(1, 0, 0));
         floorModel = glm::scale(floorModel, glm::vec3(30.0f, 40.0f, 1.0f));
@@ -376,7 +429,7 @@ int main(void) {
         glUniform4f(tintLoc, 0.4f, 0.2f, 0.1f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 2. PLAFON (Tamno siva) ---
+        // --- 2. PLAFON ---
         glm::mat4 ceilModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 6.5f));
         ceilModel = glm::rotate(ceilModel, glm::radians(90.0f), glm::vec3(1, 0, 0));
         ceilModel = glm::scale(ceilModel, glm::vec3(30.0f, 40.0f, 1.0f));
@@ -384,30 +437,29 @@ int main(void) {
         glUniform4f(tintLoc, 0.15f, 0.15f, 0.15f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 3. PREDNJI ZID (Siva - gde je platno) ---
+        // --- 3. PREDNJI ZID ---
         glm::mat4 frontWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, -12.5f));
         frontWallModel = glm::scale(frontWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(frontWallModel));
         glUniform4f(tintLoc, 0.4f, 0.4f, 0.4f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-		/// Zadnji zid (skoro crn) ---
+        // --- ZADNJI ZID ---
         glm::mat4 backWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 15.0f));
         backWallModel = glm::rotate(backWallModel, glm::radians(180.0f), glm::vec3(0, 1, 0));
         backWallModel = glm::scale(backWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(backWallModel));
-        glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f); // siva boja
+        glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         // --- 4. BOCNI ZIDOVI ---
         glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
-        // Levi
         glm::mat4 leftWall = glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 5.0f, 6.5f));
         leftWall = glm::rotate(leftWall, glm::radians(90.0f), glm::vec3(0, 1, 0));
         leftWall = glm::scale(leftWall, glm::vec3(40.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftWall));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        // Desni
+
         glm::mat4 rightWall = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f, 5.0f, 6.5f));
         rightWall = glm::rotate(rightWall, glm::radians(-90.0f), glm::vec3(0, 1, 0));
         rightWall = glm::scale(rightWall, glm::vec3(40.0f, 10.0f, 1.0f));
@@ -480,42 +532,30 @@ int main(void) {
         glEnable(GL_DEPTH_TEST);
 
         // --- 10. STEPENICE ---
-        glEnable(GL_DEPTH_TEST); // Osiguraj da je Depth Test uključen
-        glBindVertexArray(VAO);  // Ponovo binduj glavni kvadrat
-        glUniform1i(useTexLoc, 0); // Isključi teksture (boja)
-
-        // VAŽNO: Vrati matrice kamere jer su u koraku 9 bile resetovane na Identity!
+        glBindVertexArray(VAO);
+        glUniform1i(useTexLoc, 0);
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
         for (int row = 0; row < 5; row++) {
-            // --- GAZIŠTE (Horizontalni deo) ---
+            // Gazište
             glm::mat4 stepModel = glm::mat4(1.0f);
-            // Pozicija: Prati visinu (0.5 po redu) i dubinu (1.5 po redu) kao kod sedišta
             stepModel = glm::translate(stepModel, glm::vec3(0.0f, row * 0.5f - 0.05f, row * 1.5f));
-            // Rotacija: Moraš ga okrenuti da "leži" (oko X ose)
             stepModel = glm::rotate(stepModel, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            // Skaliranje: Širina sale (30), dubina jednog reda (1.5)
             stepModel = glm::scale(stepModel, glm::vec3(30.0f, 1.5f, 1.0f));
-
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(stepModel));
-            glUniform4f(tintLoc, 0.2f, 0.1f, 0.05f, 1.0f); // Tamno braon boja
+            glUniform4f(tintLoc, 0.2f, 0.1f, 0.05f, 1.0f);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-            // --- ČELO STEPENIKA (Vertikalni deo - da ne "lebde") ---
+            // Čelo
             if (row > 0) {
                 glm::mat4 frontModel = glm::mat4(1.0f);
-                // Postavlja se između dva stepenika
                 frontModel = glm::translate(frontModel, glm::vec3(0.0f, row * 0.5f - 0.3f, row * 1.5f - 0.75f));
-                // Skaliranje: Širina sale (30), visina između redova (0.5)
                 frontModel = glm::scale(frontModel, glm::vec3(30.0f, 0.5f, 1.0f));
-
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(frontModel));
-                glUniform4f(tintLoc, 0.15f, 0.08f, 0.04f, 1.0f); // Malo tamnije
+                glUniform4f(tintLoc, 0.15f, 0.08f, 0.04f, 1.0f);
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
         }
-
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -525,3 +565,13 @@ int main(void) {
     glfwTerminate();
     return 0;
 }
+
+
+//TO DO:/*
+// poraviti potpis se ne vidi korz stepenice
+// poraviti visinu stenepica
+// model ljudi umesto kvarta
+// 
+// 
+// 
+// */
