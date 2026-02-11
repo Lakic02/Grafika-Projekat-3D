@@ -237,6 +237,9 @@ int main(void) {
     };
 
     unsigned int VAO, VBO;
+    unsigned int sigVAO, sigVBO;
+    glGenVertexArrays(1, &sigVAO); glGenBuffers(1, &sigVBO);
+    glBindVertexArray(sigVAO); glBindBuffer(GL_ARRAY_BUFFER, sigVBO);
     glGenVertexArrays(1, &VAO); glGenBuffers(1, &VBO);
     glBindVertexArray(VAO); glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -244,23 +247,6 @@ int main(void) {
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
-    // PROŠIRENJE: Uključivanje normala (location 3)
-    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
-
-    float sigVertices[] = {
-        0.40f, -0.95f, 0.0f,  1,1,1,0.4f,  0,0,  0,0,1,
-        0.95f, -0.95f,0.0f,  1,1,1,0.4f,  1,0,  0,0,1,
-        0.95f, -0.85f,0.0f,  1,1,1,0.4f,  1,1,  0,0,1,
-        0.40f, -0.85f,0.0f,  1,1,1,0.4f,  0,1,  0,0,1
-    };
-    unsigned int sigVAO, sigVBO;
-    glGenVertexArrays(1, &sigVAO); glGenBuffers(1, &sigVBO);
-    glBindVertexArray(sigVAO); glBindBuffer(GL_ARRAY_BUFFER, sigVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(sigVertices), sigVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
-    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
-    // PROŠIRENJE: Uključivanje normala za potpis (takođe 12 float-ova po temenu)
     glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
 
     unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
@@ -325,17 +311,19 @@ int main(void) {
             projectionTimer += deltaTime;
         }
 
-        // --- LOGIKA SVETLA (Prosirenje) ---
+        // --- LOGIKA SVETLA (Zadatak: Pomereno u centar sale iznad 2. reda) ---
         Light activeLight;
         if (currentState == ENTER || currentState == EXIT) {
-            activeLight.pos = glm::vec3(0.0f, 8.0f, 0.0f); // Plafon
-            activeLight.color = glm::vec3(1.0f, 0.9f, 0.8f); // Topla bela
-            activeLight.intensity = 1.0f;
+            // Iznad drugog reda: X=0 (sredina), Y=8 (plafon), Z=1.5 (2. red sedista)
+            activeLight.pos = glm::vec3(0.0f, 8.0f, 10.0f); 
+            activeLight.color = glm::vec3(1.0f, 0.95f, 0.85f); // Malo toplija bela
+            activeLight.intensity = 3.0f; // Pojačan intenzitet
         }
         else if (currentState == PROJECTION && projectionTimer <= 20.0f) {
-            activeLight.pos = glm::vec3(0.0f, 3.5f, -11.0f); // Ispred platna
-            activeLight.color = glm::vec3(0.7f, 0.8f, 1.0f); // Filmska plava
-            activeLight.intensity = 0.8f;
+            // Svetlo sa platna tokom filma
+            activeLight.pos = glm::vec3(0.0f, 3.5f, 1.5f);
+            activeLight.color = glm::vec3(0.7f, 0.8f, 1.0f);
+            activeLight.intensity = 0.50f;
         }
         else {
             activeLight.pos = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -349,7 +337,6 @@ int main(void) {
         glUseProgram(unifiedShader);
         glUniform1i(transLoc, 1);
 
-        // SLANJE PARAMETARA SVETLA U ŠEJDER (Prosirenje)
         glUniform3fv(lightPosLoc, 1, glm::value_ptr(activeLight.pos));
         glUniform3fv(lightColLoc, 1, glm::value_ptr(activeLight.color));
         glUniform1f(lightIntLoc, activeLight.intensity);

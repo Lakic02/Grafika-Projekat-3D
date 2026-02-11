@@ -37,13 +37,13 @@ void main()
     
     // Slabljenje svetla sa daljinom (attenuation)
     float dist = distance(uLightPos, chWorldPos);
-    float attenuation = 1.0 / (1.0 + 0.05 * dist + 0.02 * (dist * dist));
+    float attenuation = 1.0;
 
     // Difuzno svetlo
-    float diff = max(dot(normal, lightDir), 0.0);
+    float diff = 1;
     vec3 diffuseEffect = uLightCol * diff * uLightIntensity * attenuation;
 
     // Finalni proracun: Osnovna boja * (Svetlost + Ambijentalni nivo)
     outCol = resCol * uTint;
-    outCol.rgb = outCol.rgb * (diffuseEffect + uAmb + 0.05); // 0.05 je minimalni mrak da se bar nesto vidi
+    outCol.rgb = outCol.rgb * (diffuseEffect + uAmb + 0.9); // 0.05 je minimalni mrak da se bar nesto vidi
 }
