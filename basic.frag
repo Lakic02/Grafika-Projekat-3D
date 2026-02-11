@@ -8,7 +8,7 @@ out vec4 outCol;
 uniform sampler2D uTex;
 uniform bool useTex;
 uniform bool transparent;
-uniform float uAmb; // Faktor ambijentalnog svetla
+uniform float uAmb; 
 
 void main()
 {
@@ -17,11 +17,9 @@ void main()
 	}
 	else {
 		outCol = texture(uTex, channelTex) * channelCol;
-		
 		if (!transparent && outCol.a < 1.0) {
 			outCol = vec4(outCol.rgb, 1.0); 
 		}
 	}
-    // Dodajemo ambijentalno svetlo na RGB kanale
     outCol.rgb += uAmb; 
 }
