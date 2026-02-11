@@ -154,11 +154,21 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 
 void processInput(GLFWwindow* window) {
     float cameraSpeed = 5.0f * deltaTime;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraPos += cameraSpeed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraPos -= cameraSpeed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    glm::vec3 nextPos = cameraPos;
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) nextPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) nextPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) nextPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) nextPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
+
+    // --- LOGIKA KOLIZIJE (Kamera ne moze kroz zidove) ---
+    // Granice sale: X[-14, 14], Y[0.5, 9.5], Z[-11.5, 24]
+    nextPos.x = glm::clamp(nextPos.x, -14.0f, 14.0f);
+    nextPos.y = glm::clamp(nextPos.y, 0.5f, 9.5f);
+    nextPos.z = glm::clamp(nextPos.z, -11.5f, 14.9f);
+
+    cameraPos = nextPos;
 
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
         if (!mousePressed && currentState == START) {
@@ -237,13 +247,25 @@ int main(void) {
     };
 
     unsigned int VAO, VBO;
-    unsigned int sigVAO, sigVBO;
-    glGenVertexArrays(1, &sigVAO); glGenBuffers(1, &sigVBO);
-    glBindVertexArray(sigVAO); glBindBuffer(GL_ARRAY_BUFFER, sigVBO);
     glGenVertexArrays(1, &VAO); glGenBuffers(1, &VBO);
     glBindVertexArray(VAO); glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     unsigned int stride = 12 * sizeof(float);
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
+
+    float sigVertices[] = {
+        0.40f, -0.95f, 0.0f,  1,1,1,0.4f,  0,0,  0,0,1,
+        0.95f, -0.95f,0.0f,  1,1,1,0.4f,  1,0,  0,0,1,
+        0.95f, -0.85f,0.0f,  1,1,1,0.4f,  1,1,  0,0,1,
+        0.40f, -0.85f,0.0f,  1,1,1,0.4f,  0,1,  0,0,1
+    };
+    unsigned int sigVAO, sigVBO;
+    glGenVertexArrays(1, &sigVAO); glGenBuffers(1, &sigVBO);
+    glBindVertexArray(sigVAO); glBindBuffer(GL_ARRAY_BUFFER, sigVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(sigVertices), sigVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
@@ -269,7 +291,7 @@ int main(void) {
         lastFrame = (float)frameStartTime;
         processInput(window);
 
-        // --- LOGIKA KRETANJA ---
+        // --- LOGIKA KRETANJA LJUDI ---
         if (currentState == ENTER) {
             bool allSeated = true;
             if (visitors.empty()) allSeated = false;
@@ -311,19 +333,17 @@ int main(void) {
             projectionTimer += deltaTime;
         }
 
-        // --- LOGIKA SVETLA (Zadatak: Pomereno u centar sale iznad 2. reda) ---
+        // --- LOGIKA SVETLA ---
         Light activeLight;
         if (currentState == ENTER || currentState == EXIT) {
-            // Iznad drugog reda: X=0 (sredina), Y=8 (plafon), Z=1.5 (2. red sedista)
-            activeLight.pos = glm::vec3(0.0f, 8.0f, 10.0f); 
-            activeLight.color = glm::vec3(1.0f, 0.95f, 0.85f); // Malo toplija bela
-            activeLight.intensity = 3.0f; // Pojačan intenzitet
+            activeLight.pos = glm::vec3(0.0f, 8.0f, 1.5f);
+            activeLight.color = glm::vec3(1.0f, 0.95f, 0.85f);
+            activeLight.intensity = 2.0f;
         }
         else if (currentState == PROJECTION && projectionTimer <= 20.0f) {
-            // Svetlo sa platna tokom filma
-            activeLight.pos = glm::vec3(0.0f, 3.5f, 1.5f);
+            activeLight.pos = glm::vec3(0.0f, 3.5f, -11.0f);
             activeLight.color = glm::vec3(0.7f, 0.8f, 1.0f);
-            activeLight.intensity = 0.50f;
+            activeLight.intensity = 0.8f;
         }
         else {
             activeLight.pos = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -336,7 +356,6 @@ int main(void) {
 
         glUseProgram(unifiedShader);
         glUniform1i(transLoc, 1);
-
         glUniform3fv(lightPosLoc, 1, glm::value_ptr(activeLight.pos));
         glUniform3fv(lightColLoc, 1, glm::value_ptr(activeLight.color));
         glUniform1f(lightIntLoc, activeLight.intensity);
@@ -347,8 +366,55 @@ int main(void) {
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
         glBindVertexArray(VAO);
+        glUniform1i(useTexLoc, 0);
 
-        // 1. PLATNO
+        // --- 1. POD (Braon) ---
+        glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 6.5f));
+        floorModel = glm::rotate(floorModel, glm::radians(-90.0f), glm::vec3(1, 0, 0));
+        floorModel = glm::scale(floorModel, glm::vec3(30.0f, 40.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(floorModel));
+        glUniform4f(tintLoc, 0.4f, 0.2f, 0.1f, 1.0f);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // --- 2. PLAFON (Tamno siva) ---
+        glm::mat4 ceilModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 6.5f));
+        ceilModel = glm::rotate(ceilModel, glm::radians(90.0f), glm::vec3(1, 0, 0));
+        ceilModel = glm::scale(ceilModel, glm::vec3(30.0f, 40.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(ceilModel));
+        glUniform4f(tintLoc, 0.15f, 0.15f, 0.15f, 1.0f);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // --- 3. PREDNJI ZID (Siva - gde je platno) ---
+        glm::mat4 frontWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, -12.5f));
+        frontWallModel = glm::scale(frontWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(frontWallModel));
+        glUniform4f(tintLoc, 0.4f, 0.4f, 0.4f, 1.0f);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+		/// Zadnji zid (skoro crn) ---
+        glm::mat4 backWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 15.0f));
+        backWallModel = glm::rotate(backWallModel, glm::radians(180.0f), glm::vec3(0, 1, 0));
+        backWallModel = glm::scale(backWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(backWallModel));
+        glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f); // siva boja
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // --- 4. BOCNI ZIDOVI ---
+        glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
+        // Levi
+        glm::mat4 leftWall = glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 5.0f, 6.5f));
+        leftWall = glm::rotate(leftWall, glm::radians(90.0f), glm::vec3(0, 1, 0));
+        leftWall = glm::scale(leftWall, glm::vec3(40.0f, 10.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftWall));
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        // Desni
+        glm::mat4 rightWall = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f, 5.0f, 6.5f));
+        rightWall = glm::rotate(rightWall, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        rightWall = glm::scale(rightWall, glm::vec3(40.0f, 10.0f, 1.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightWall));
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // --- 5. PLATNO ---
         glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
         screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
@@ -366,7 +432,7 @@ int main(void) {
         glUniform4f(tintLoc, 1, 1, 1, 1);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // 2. VRATA
+        // --- 6. VRATA ---
         glm::mat4 doorModel = glm::translate(glm::mat4(1.0f), glm::vec3(11.0f, 2.0f, -12.0f));
         doorModel = glm::scale(doorModel, glm::vec3(3.0f, 5.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(doorModel));
@@ -375,7 +441,7 @@ int main(void) {
         glBindTexture(GL_TEXTURE_2D, (currentState == ENTER || currentState == EXIT ? doorOpenTex : doorCloseTex));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // 3. SEDIŠTA
+        // --- 7. SEDIŠTA ---
         glBindTexture(GL_TEXTURE_2D, seatTex);
         glUniform1i(useTexLoc, 1);
         for (int row = 0; row < 5; row++) {
@@ -389,7 +455,7 @@ int main(void) {
             }
         }
 
-        // 4. LJUDI
+        // --- 8. LJUDI ---
         glUniform1i(useTexLoc, 0);
         glUniform1f(ambLoc, 0.1f);
         for (auto& v : visitors) {
@@ -400,7 +466,7 @@ int main(void) {
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         }
 
-        // 5. POTPIS
+        // --- 9. POTPIS ---
         glDisable(GL_DEPTH_TEST);
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
