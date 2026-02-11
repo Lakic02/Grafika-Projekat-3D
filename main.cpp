@@ -30,7 +30,7 @@ struct Viewer {
     glm::vec3 targetPos;
     bool reachedRow = false;
     bool reachedSeat = false;
-    float speed = 1.0f; // Brzina koja će biti randomizovana
+    float speed = 1.0f;
 };
 std::vector<Viewer> visitors;
 
@@ -49,14 +49,13 @@ float lastX = 0, lastY = 0;
 float deltaTime = 0.0f, lastFrame = 0.0f;
 bool mousePressed = false;
 
-// Pozicija vrata za spawn
+// Pozicija vrata za spawn (Y je 0.0f - najniži nivo)
 glm::vec3 doorPosSpawn = glm::vec3(11.0f, 0.0f, -12.0f);
 
-// Funkcija za spawn sa random logikom (Zadatak 1 i 2)
+// Funkcija za spawn sa random logikom i inicijalizacijom na nulu
 void spawnVisitors() {
     visitors.clear();
 
-    // 1. Prikupi sva potencijalna sedišta (rezervisana ili kupljena)
     std::vector<glm::vec3> occupiedSeatPositions;
     for (int r = 0; r < 5; r++) {
         for (int c = 0; c < 10; c++) {
@@ -69,29 +68,23 @@ void spawnVisitors() {
     int totalOccupied = (int)occupiedSeatPositions.size();
     if (totalOccupied == 0) return;
 
-    // 2. Odredi random broj ljudi koji dolaze (1 <= N <= totalOccupied)
-    // Koristimo moderni C++ generator za bolju nasumičnost
     std::default_random_engine engine(static_cast<unsigned int>(time(0)));
     std::uniform_int_distribution<int> countDist(1, totalOccupied);
     int spawnCount = countDist(engine);
 
-    // 3. Promešaj pozicije da bismo nasumično odabrali ko dolazi
     std::shuffle(occupiedSeatPositions.begin(), occupiedSeatPositions.end(), engine);
 
-    // 4. Kreiraj posetioce sa random brzinama
     std::uniform_real_distribution<float> speedDist(0.8f, 1.0f);
-    float baseSpeed = 3.5f; // Bazna brzina kretanja
+    float baseSpeed = 3.5f;
 
     for (int i = 0; i < spawnCount; i++) {
         Viewer v;
+        // Zadatak 1: Svi se spawnuje na visini vrata (0.0f), bez obzira gde im je sedište
         v.currentPos = doorPosSpawn;
         v.targetPos = occupiedSeatPositions[i];
         v.reachedRow = false;
         v.reachedSeat = false;
-
-        // Zadatak 2: Svaki posetilac dobija svoju brzinu iz opsega [0.8, 1.0] * baseSpeed
         v.speed = speedDist(engine) * baseSpeed;
-
         visitors.push_back(v);
     }
 }
@@ -99,7 +92,6 @@ void spawnVisitors() {
 // --- CALLBACKS ---
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS) {
-        // Prosirenje: Enter taster aktivira ENTER stanje i spawn
         if (key == GLFW_KEY_ENTER) {
             if (currentState == START) {
                 currentState = ENTER;
@@ -107,10 +99,8 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             }
         }
 
-        // --- KUPOVINA SEDIŠTA ---
         if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
             if (currentState != START) return;
-
             int nSeats = key - GLFW_KEY_0;
             for (int row = 4; row >= 0; row--) {
                 for (int col = 0; col <= 10 - nSeats; col++) {
@@ -156,7 +146,6 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
 
-    // --- REZERVACIJA NA KLIK ---
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
         if (!mousePressed && currentState == START) {
             mousePressed = true;
@@ -267,22 +256,35 @@ int main(void) {
         lastFrame = (float)frameStartTime;
         processInput(window);
 
-        // --- LOGIKA KRETANJA POSITILACA ---
+        // --- LOGIKA KRETANJA POSITILACA SA KOREKCIJOM VISINE ---
         if (currentState == ENTER) {
             for (auto& v : visitors) {
                 if (!v.reachedRow) {
-                    // Kretanje po dubini (Z osa)
+                    // 1. Kretanje po dubini (Z osa)
                     if (std::abs(v.currentPos.z - v.targetPos.z) > 0.05f) {
                         float dir = (v.targetPos.z > v.currentPos.z) ? 1.0f : -1.0f;
                         v.currentPos.z += dir * v.speed * deltaTime;
+
+                        // Zadatak 2: Penjanje uz stepenice dok hoda ka svom redu
+                        // Redovi su na Z = 0, 1.5, 3.0, 4.5, 6.0
+                        // Visine su na Y = 0, 0.5, 1.0, 1.5, 2.0
+                        // Logika: Uzmi broj redova koje je osoba vec presla
+                        int passedRows = (int)(v.currentPos.z / 1.5f + 0.01f);
+                        if (passedRows < 0) passedRows = 0;
+
+                        v.currentPos.y = passedRows * 0.5f;
+
+                        // Zadatak 3: Penjanje ne sme preci visinu ciljanog sedista
+                        if (v.currentPos.y > v.targetPos.y) v.currentPos.y = v.targetPos.y;
                     }
                     else {
                         v.currentPos.z = v.targetPos.z;
+                        v.currentPos.y = v.targetPos.y; // Finalna visina pri skretanju
                         v.reachedRow = true;
                     }
                 }
                 else if (!v.reachedSeat) {
-                    // Kretanje po širini (X osa)
+                    // 2. Kretanje po širini (X osa)
                     if (std::abs(v.currentPos.x - v.targetPos.x) > 0.05f) {
                         float dir = (v.targetPos.x > v.currentPos.x) ? 1.0f : -1.0f;
                         v.currentPos.x += dir * v.speed * deltaTime;
@@ -291,8 +293,9 @@ int main(void) {
                         v.currentPos.x = v.targetPos.x;
                         v.reachedSeat = true;
                     }
+                    // Održavaj visinu sedišta dok se krećeš kroz red
+                    v.currentPos.y = v.targetPos.y;
                 }
-                v.currentPos.y = v.targetPos.y;
             }
         }
 
@@ -334,19 +337,14 @@ int main(void) {
             for (int col = 0; col < 10; col++) {
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), cinemaSeats[row][col].pos);
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-
-                if (cinemaSeats[row][col].isBought)
-                    glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f);
-                else if (cinemaSeats[row][col].isReserved)
-                    glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f);
-                else
-                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f);
-
+                if (cinemaSeats[row][col].isBought) glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f);
+                else if (cinemaSeats[row][col].isReserved) glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f);
+                else glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f);
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
         }
 
-        // 4. LJUDI (Ljubičasti kvadri sa individualnim brzinama)
+        // 4. LJUDI (Ljubičasti kvadri)
         glUniform1i(useTexLoc, 0);
         glUniform1f(ambLoc, 0.1f);
         for (auto& v : visitors) {
