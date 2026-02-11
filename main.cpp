@@ -479,6 +479,44 @@ int main(void) {
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         glEnable(GL_DEPTH_TEST);
 
+        // --- 10. STEPENICE ---
+        glEnable(GL_DEPTH_TEST); // Osiguraj da je Depth Test uključen
+        glBindVertexArray(VAO);  // Ponovo binduj glavni kvadrat
+        glUniform1i(useTexLoc, 0); // Isključi teksture (boja)
+
+        // VAŽNO: Vrati matrice kamere jer su u koraku 9 bile resetovane na Identity!
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+        for (int row = 0; row < 5; row++) {
+            // --- GAZIŠTE (Horizontalni deo) ---
+            glm::mat4 stepModel = glm::mat4(1.0f);
+            // Pozicija: Prati visinu (0.5 po redu) i dubinu (1.5 po redu) kao kod sedišta
+            stepModel = glm::translate(stepModel, glm::vec3(0.0f, row * 0.5f - 0.05f, row * 1.5f));
+            // Rotacija: Moraš ga okrenuti da "leži" (oko X ose)
+            stepModel = glm::rotate(stepModel, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            // Skaliranje: Širina sale (30), dubina jednog reda (1.5)
+            stepModel = glm::scale(stepModel, glm::vec3(30.0f, 1.5f, 1.0f));
+
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(stepModel));
+            glUniform4f(tintLoc, 0.2f, 0.1f, 0.05f, 1.0f); // Tamno braon boja
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+            // --- ČELO STEPENIKA (Vertikalni deo - da ne "lebde") ---
+            if (row > 0) {
+                glm::mat4 frontModel = glm::mat4(1.0f);
+                // Postavlja se između dva stepenika
+                frontModel = glm::translate(frontModel, glm::vec3(0.0f, row * 0.5f - 0.3f, row * 1.5f - 0.75f));
+                // Skaliranje: Širina sale (30), visina između redova (0.5)
+                frontModel = glm::scale(frontModel, glm::vec3(30.0f, 0.5f, 1.0f));
+
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(frontModel));
+                glUniform4f(tintLoc, 0.15f, 0.08f, 0.04f, 1.0f); // Malo tamnije
+                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            }
+        }
+
+
         glfwSwapBuffers(window);
         glfwPollEvents();
         while (glfwGetTime() - frameStartTime < targetFrameTime) {}
