@@ -17,9 +17,19 @@
 struct Seat {
     glm::vec3 pos;
     bool isReserved = false;
-    bool isBought = false; // novo stanje kupljeno
+    bool isBought = false;
 };
-Seat cinemaSeats[5][10]; // Matrica 5x10 sedista
+Seat cinemaSeats[5][10];
+
+// --- ENTITET: GLEDALAC ---
+struct Viewer {
+    glm::vec3 currentPos;
+    glm::vec3 targetPos;
+    bool reachedRow = false;
+    bool reachedSeat = false;
+    float speed = 3.0f;
+};
+std::vector<Viewer> visitors;
 
 // --- STANJA ---
 enum CinemaState { START, ENTER, PROJECTION, EXIT };
@@ -34,32 +44,59 @@ bool firstMouse = true;
 float yaw = -90.0f, pitch = 0.0f;
 float lastX = 0, lastY = 0;
 float deltaTime = 0.0f, lastFrame = 0.0f;
-bool mousePressed = false; // Za sprecavanje visestrukih klikova
+bool mousePressed = false;
 
-// --- REZERVACIJA ---
+// Pozicija vrata za spawn
+glm::vec3 doorPosSpawn = glm::vec3(11.0f, 0.0f, -12.0f);
+
+void spawnVisitors() {
+    visitors.clear();
+    for (int r = 0; r < 5; r++) {
+        for (int c = 0; c < 10; c++) {
+            if (cinemaSeats[r][c].isReserved || cinemaSeats[r][c].isBought) {
+                Viewer v;
+                v.currentPos = doorPosSpawn;
+                v.targetPos = cinemaSeats[r][c].pos;
+                v.reachedRow = false;
+                v.reachedSeat = false;
+                visitors.push_back(v);
+            }
+        }
+    }
+}
+
+// --- CALLBACKS (Vraćena originalna logika + Enter proširenje) ---
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS) {
-        if (key == GLFW_KEY_1) currentState = START;
-        if (key == GLFW_KEY_2) currentState = ENTER;
-        if (key == GLFW_KEY_3) currentState = PROJECTION;
-        if (key == GLFW_KEY_4) currentState = EXIT;
+      //  if (key == GLFW_KEY_1) currentState = START;
+        if (key == GLFW_KEY_ENTER) currentState = ENTER;
+        //if (key == GLFW_KEY_3) currentState = PROJECTION;
+       // if (key == GLFW_KEY_4) currentState = EXIT;
 
-        // --- KUPLJENJE SEDIŠTA ---
-        if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
-            int nSeats = key - GLFW_KEY_0; // 1-9
-            for (int row = 4; row >= 0; row--) { // od kraja sale
+        // Prosirenje 1: Enter taster
+        if (key == GLFW_KEY_ENTER) {
+            currentState = ENTER;
+            spawnVisitors();
+        }
+
+        // --- KUPLJENJE SEDIŠTA (Originalna logika nepromenjena) ---
+        if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9 ) {
+			if (currentState != START) return;  // Kupovina dozvoljena samo u START stanju
+
+			printf("Attempting to buy %d seats...\n", key - GLFW_KEY_0);
+            int nSeats = key - GLFW_KEY_0;
+            for (int row = 4; row >= 0; row--) {
                 for (int col = 0; col <= 10 - nSeats; col++) {
                     bool canBuy = true;
-                    // Proveri susedna sedišta
                     for (int k = 0; k < nSeats; k++) {
                         if (cinemaSeats[row][col + k].isBought || cinemaSeats[row][col + k].isReserved) {
-                            canBuy = false; // ne sme biti kupljeno ili rezervisano
+                            canBuy = false;
                             break;
                         }
                     }
                     if (canBuy) {
                         for (int k = 0; k < nSeats; k++)
-                            cinemaSeats[row][col + k].isBought = true; // oznaci kao kupljeno
+                            cinemaSeats[row][col + k].isBought = true;
                         goto boughtDone;
                     }
                 }
@@ -86,40 +123,32 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 
 void processInput(GLFWwindow* window) {
     float cameraSpeed = 5.0f * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
 
-    // --- Kretanje kamere ---
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        cameraPos += cameraSpeed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        cameraPos -= cameraSpeed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    // --- REZERVACIJA NA KLIK ---
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+    // --- REZERVACIJA NA KLIK (Originalna logika nepromenjena) ---
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && currentState == START) {
         if (!mousePressed && currentState == START) {
             mousePressed = true;
-            bool seatClicked = false; // flag za prekid petlji
+            bool seatClicked = false;
             for (int r = 0; r < 5 && !seatClicked; r++) {
                 for (int c = 0; c < 10 && !seatClicked; c++) {
                     glm::vec3 toSeat = glm::normalize(cinemaSeats[r][c].pos - cameraPos);
                     float dotProduct = glm::dot(cameraFront, toSeat);
                     float distance = glm::distance(cameraPos, cinemaSeats[r][c].pos);
-
-                    // klik samo ako sedište nije kupljeno
                     if (dotProduct > 0.995f && distance < 20.0f && !cinemaSeats[r][c].isBought) {
                         cinemaSeats[r][c].isReserved = !cinemaSeats[r][c].isReserved;
-                        seatClicked = true; // prekini unutrašnju i spoljnu petlju
+                        seatClicked = true;
                     }
                 }
             }
         }
-    } else {
-        mousePressed = false; // reset kada se dugme otpusti
+    }
+    else {
+        mousePressed = false;
     }
 }
 
@@ -143,7 +172,7 @@ int main(void) {
 
     GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Cinema Booking", primaryMonitor, NULL);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Cinema Simulation", primaryMonitor, NULL);
     if (!window) { glfwTerminate(); return 2; }
     glfwMakeContextCurrent(window);
     glewInit();
@@ -151,7 +180,6 @@ int main(void) {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetKeyCallback(window, key_callback);
 
-    // Inicijalizacija pozicija sedista
     for (int r = 0; r < 5; r++)
         for (int c = 0; c < 10; c++)
             cinemaSeats[r][c].pos = glm::vec3((c - 4.5f) * 1.5f, r * 0.5f, r * 1.5f);
@@ -182,7 +210,6 @@ int main(void) {
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
 
-    // Potpis
     float sigVertices[] = {
         0.40f, -0.95f, 0.0f,  1,1,1,0.4f,  0,0,  0,0,1,
         0.95f, -0.95f,0.0f,  1,1,1,0.4f,  1,0,  0,0,1,
@@ -213,6 +240,33 @@ int main(void) {
         lastFrame = (float)frameStartTime;
         processInput(window);
 
+        // LOGIKA KRETANJA POSITILACA
+        if (currentState == ENTER) {
+            for (auto& v : visitors) {
+                if (!v.reachedRow) {
+                    if (v.currentPos.z < v.targetPos.z) {
+                        v.currentPos.z += v.speed * deltaTime;
+                        if (v.currentPos.z >= v.targetPos.z) { v.currentPos.z = v.targetPos.z; v.reachedRow = true; }
+                    }
+                    else {
+                        v.currentPos.z -= v.speed * deltaTime;
+                        if (v.currentPos.z <= v.targetPos.z) { v.currentPos.z = v.targetPos.z; v.reachedRow = true; }
+                    }
+                }
+                else if (!v.reachedSeat) {
+                    if (v.currentPos.x < v.targetPos.x) {
+                        v.currentPos.x += v.speed * deltaTime;
+                        if (v.currentPos.x >= v.targetPos.x) { v.currentPos.x = v.targetPos.x; v.reachedSeat = true; }
+                    }
+                    else {
+                        v.currentPos.x -= v.speed * deltaTime;
+                        if (v.currentPos.x <= v.targetPos.x) { v.currentPos.x = v.targetPos.x; v.reachedSeat = true; }
+                    }
+                }
+                v.currentPos.y = v.targetPos.y;
+            }
+        }
+
         glClearColor(0.01f, 0.01f, 0.02f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -226,7 +280,7 @@ int main(void) {
 
         glBindVertexArray(VAO);
 
-        // 1. PLATNO
+        // 1. PLATNO (Originalni kod)
         glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
         screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
@@ -235,7 +289,7 @@ int main(void) {
         glUniform4f(tintLoc, 1, 1, 1, 1);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // 2. VRATA
+        // 2. VRATA (Vraćena originalna logika koda bez belih okvira)
         glm::mat4 doorModel = glm::translate(glm::mat4(1.0f), glm::vec3(11.0f, 2.0f, -12.0f));
         doorModel = glm::scale(doorModel, glm::vec3(3.0f, 5.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(doorModel));
@@ -244,7 +298,7 @@ int main(void) {
         glBindTexture(GL_TEXTURE_2D, (currentState == ENTER || currentState == EXIT ? doorOpenTex : doorCloseTex));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // 3. SEDIŠTA
+        // 3. SEDIŠTA (Vraćena originalna logika koda za bojenje)
         glBindTexture(GL_TEXTURE_2D, seatTex);
         glUniform1i(useTexLoc, 1);
         for (int row = 0; row < 5; row++) {
@@ -253,17 +307,28 @@ int main(void) {
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
                 if (cinemaSeats[row][col].isBought)
-                    glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f); // crveno kupljeno
+                    glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f);
                 else if (cinemaSeats[row][col].isReserved)
-                    glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f); // zuto rezervisano
+                    glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f);
                 else
-                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f); // plavo slobodno
+                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f);
 
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
         }
 
-        // 4. POTPIS
+        // 4. LJUDI (Novo proširenje - Ljubičasti kvadri)
+        glUniform1i(useTexLoc, 0);
+        glUniform1f(ambLoc, 0.1f);
+        for (auto& v : visitors) {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), v.currentPos + glm::vec3(0, 0.5f, 0));
+            model = glm::scale(model, glm::vec3(0.6f, 1.2f, 0.2f));
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform4f(tintLoc, 0.6f, 0.1f, 0.8f, 1.0f);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        }
+
+        // 5. POTPIS (Originalni kod)
         glDisable(GL_DEPTH_TEST);
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
