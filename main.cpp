@@ -118,8 +118,7 @@ void processInput(GLFWwindow* window) {
                 }
             }
         }
-    }
-    else {
+    } else {
         mousePressed = false; // reset kada se dugme otpusti
     }
 }
@@ -256,9 +255,9 @@ int main(void) {
                 if (cinemaSeats[row][col].isBought)
                     glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f); // crveno kupljeno
                 else if (cinemaSeats[row][col].isReserved)
-                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f); // plavo rezervisano
+                    glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f); // zuto rezervisano
                 else
-                    glUniform4f(tintLoc, 1.0f, 1.0f, 1.0f, 1.0f); // belo slobodno
+                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f); // plavo slobodno
 
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
