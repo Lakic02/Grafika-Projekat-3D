@@ -9,17 +9,22 @@ uniform sampler2D uTex;
 uniform bool useTex;
 uniform bool transparent;
 uniform float uAmb; 
+uniform vec4 uTint; // NOVA UNIFORMA: Za bojenje rezervisanih sedista
 
 void main()
 {
+	vec4 resCol;
 	if (!useTex) {
-		outCol = channelCol;
+		resCol = channelCol;
 	}
 	else {
-		outCol = texture(uTex, channelTex) * channelCol;
-		if (!transparent && outCol.a < 1.0) {
-			outCol = vec4(outCol.rgb, 1.0); 
+		resCol = texture(uTex, channelTex) * channelCol;
+		if (!transparent && resCol.a < 1.0) {
+			resCol = vec4(resCol.rgb, 1.0); 
 		}
 	}
+    
+    // Mnozimo boju sa tintom (ako je uTint plav, sediste ce poplaveti)
+    outCol = resCol * uTint;
     outCol.rgb += uAmb; 
 }

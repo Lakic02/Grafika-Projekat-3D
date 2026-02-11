@@ -13,11 +13,18 @@
 
 #include "Util.h"
 
-// --- ZADATAK 2: ENUM STANJA ---
+// --- LOGIKA SEDIŠTA ---
+struct Seat {
+    glm::vec3 pos;
+    bool isReserved = false;
+};
+Seat cinemaSeats[5][10]; // Matrica 5x10 sedista
+
+// --- STANJA ---
 enum CinemaState { START, ENTER, PROJECTION, EXIT };
 CinemaState currentState = START;
 
-// --- KAMERA I KRETANJE ---
+// --- KAMERA ---
 glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 15.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.2f, -1.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -26,14 +33,14 @@ bool firstMouse = true;
 float yaw = -90.0f, pitch = 0.0f;
 float lastX = 0, lastY = 0;
 float deltaTime = 0.0f, lastFrame = 0.0f;
+bool mousePressed = false; // Za sprecavanje visestrukih klikova
 
-// Callback za promenu stanja na tastere
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS) {
-        if (key == GLFW_KEY_1) { currentState = START; std::cout << "Stanje: POCETNO\n"; }
-        if (key == GLFW_KEY_2) { currentState = ENTER; std::cout << "Stanje: LJUDI ULAZE\n"; }
-        if (key == GLFW_KEY_3) { currentState = PROJECTION; std::cout << "Stanje: PROJEKCIJA\n"; }
-        if (key == GLFW_KEY_4) { currentState = EXIT; std::cout << "Stanje: LJUDI IZLAZE\n"; }
+        if (key == GLFW_KEY_1) currentState = START;
+        if (key == GLFW_KEY_2) currentState = ENTER;
+        if (key == GLFW_KEY_3) currentState = PROJECTION;
+        if (key == GLFW_KEY_4) currentState = EXIT;
     }
 }
 
@@ -59,6 +66,31 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
+
+    // --- ZADATAK 1: REZERVACIJA NA KLIK ---
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        if (!mousePressed && currentState == START) { // Samo u stanju START
+            mousePressed = true;
+            // Provera koje sediste "pogadjamo"
+            for (int r = 0; r < 5; r++) {
+                for (int c = 0; c < 10; c++) {
+                    glm::vec3 toSeat = glm::normalize(cinemaSeats[r][c].pos - cameraPos);
+                    // Ako je ugao izmedju fronta kamere i smera ka sedistu jako mali
+                    float dotProduct = glm::dot(cameraFront, toSeat);
+                    float distance = glm::distance(cameraPos, cinemaSeats[r][c].pos);
+
+                    if (dotProduct > 0.995f && distance < 20.0f) { // 0.995 je preciznost "nisana"
+                        cinemaSeats[r][c].isReserved = !cinemaSeats[r][c].isReserved; // Toggle
+                        goto found; // Prekini petlje kad nadjes jedno
+                    }
+                }
+            }
+        }
+    }
+    else {
+        mousePressed = false;
+    }
+found:;
 }
 
 unsigned int setupTexture(const char* filepath) {
@@ -81,7 +113,7 @@ int main(void) {
 
     GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Bioskop Logika - RA 67/2021", primaryMonitor, NULL);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Cinema Booking - Nikola Lakic RA 67/2021", primaryMonitor, NULL);
 
     if (window == NULL) { glfwTerminate(); return 2; }
     glfwMakeContextCurrent(window);
@@ -90,16 +122,21 @@ int main(void) {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetKeyCallback(window, key_callback);
 
+    // Inicijalizacija pozicija sedista
+    for (int r = 0; r < 5; r++) {
+        for (int c = 0; c < 10; c++) {
+            cinemaSeats[r][c].pos = glm::vec3((c - 4.5f) * 1.5f, r * 0.5f, r * 1.5f);
+        }
+    }
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     unsigned int unifiedShader = createShader("basic.vert", "basic.frag");
 
-    // UCITAVANJE TEKSTURA
     unsigned int signatureTex = setupTexture("res/signature.png");
     unsigned int seatTex = setupTexture("stolica.png");
-    // Zadatak 3: Teksture vrata
     unsigned int doorOpenTex = setupTexture("res/open.png");
     unsigned int doorCloseTex = setupTexture("res/close.png");
 
@@ -119,7 +156,7 @@ int main(void) {
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
 
-    // Potpis (2D)
+    // Potpis
     float sigVertices[] = {
         0.40f, -0.95f, 0.0f,  1.0f, 1.0f, 1.0f, 0.4f, 0.0f, 0.0f, 0,0,1,
         0.95f, -0.95f, 0.0f,  1.0f, 1.0f, 1.0f, 0.4f, 1.0f, 0.0f, 0,0,1,
@@ -140,6 +177,7 @@ int main(void) {
     unsigned int useTexLoc = glGetUniformLocation(unifiedShader, "useTex");
     unsigned int transLoc = glGetUniformLocation(unifiedShader, "transparent");
     unsigned int ambLoc = glGetUniformLocation(unifiedShader, "uAmb");
+    unsigned int tintLoc = glGetUniformLocation(unifiedShader, "uTint");
 
     double targetFrameTime = 1.0 / 75.0;
 
@@ -162,57 +200,48 @@ int main(void) {
 
         glBindVertexArray(VAO);
 
-        // --- 1. PLATNO ---
-        glm::mat4 screenModel = glm::mat4(1.0f);
-        screenModel = glm::translate(screenModel, glm::vec3(0.0f, 3.5f, -12.0f));
-        screenModel = glm::scale(screenModel, glm::vec3(16.0f, 8.0f, 1.0f));
+        // 1. PLATNO
+        glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
+        screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
         glUniform1i(useTexLoc, 0);
-        // Efekat projekcije: Platno malo sija ako je film u toku
-        float screenAmb = (currentState == PROJECTION) ? 0.3f : 0.0f;
-        glUniform1f(ambLoc, screenAmb);
+        glUniform1f(ambLoc, (currentState == PROJECTION ? 0.3f : 0.0f));
+        glUniform4f(tintLoc, 1.0, 1.0, 1.0, 1.0); // Reset tint na belo
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 2. VRATA (Zadatak 1 & 3) ---
-        glm::mat4 doorModel = glm::mat4(1.0f);
-        // Postavljamo vrata desno od platna (platno se zavrsava na X=8, vrata na X=10)
-        doorModel = glm::translate(doorModel, glm::vec3(10.5f, 0.5f, -12.0f));
-        doorModel = glm::scale(doorModel, glm::vec3(1.5f, 2.0f, 1.0f));
+        // 2. VRATA
+        glm::mat4 doorModel = glm::translate(glm::mat4(1.0f), glm::vec3(11.0f, 2.0f, -12.0f));
+        doorModel = glm::scale(doorModel, glm::vec3(3.0f, 5.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(doorModel));
-        glUniform1i(useTexLoc, 1);
-        glUniform1f(ambLoc, 0.3f); // Vrata moraju uvek biti malo osvetljena
-
-        // Logika za teksturu vrata
-        if (currentState == ENTER || currentState == EXIT)
-            glBindTexture(GL_TEXTURE_2D, doorOpenTex);
-        else
-            glBindTexture(GL_TEXTURE_2D, doorCloseTex);
-
+        glUniform1i(useTexLoc, 1); glUniform1f(ambLoc, 0.2f);
+        glBindTexture(GL_TEXTURE_2D, (currentState == ENTER || currentState == EXIT ? doorOpenTex : doorCloseTex));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 3. SEDIŠTA (50 komada) ---
+        // 3. SEDIŠTA
         glBindTexture(GL_TEXTURE_2D, seatTex);
         glUniform1i(useTexLoc, 1);
         glUniform1f(ambLoc, 0.15f);
         for (int row = 0; row < 5; row++) {
             for (int col = 0; col < 10; col++) {
-                glm::mat4 model = glm::mat4(1.0f);
-                float xPos = (col - 4.5f) * 1.5f;
-                float yPos = row * 0.5f;
-                float zPos = row * 1.5f;
-                model = glm::translate(model, glm::vec3(xPos, yPos, zPos));
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), cinemaSeats[row][col].pos);
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+                // AKO JE REZERVISANO -> PLAVA BOJA
+                if (cinemaSeats[row][col].isReserved)
+                    glUniform4f(tintLoc, 0.3f, 0.3f, 1.0f, 1.0f); // Svetlo plava
+                else
+                    glUniform4f(tintLoc, 1.0f, 1.0f, 1.0f, 1.0f); // Bela (normalna)
+
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
         }
 
-        // --- 4. POTPIS (2D) ---
+        // 4. POTPIS (2D)
         glDisable(GL_DEPTH_TEST);
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-        glUniform1i(useTexLoc, 1);
-        glUniform1f(ambLoc, 0.0f);
+        glUniform1i(useTexLoc, 1); glUniform1f(ambLoc, 0.0f); glUniform4f(tintLoc, 1, 1, 1, 1);
         glBindTexture(GL_TEXTURE_2D, signatureTex);
         glBindVertexArray(sigVAO);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -222,7 +251,6 @@ int main(void) {
         glfwPollEvents();
         while (glfwGetTime() - frameStartTime < targetFrameTime) {}
     }
-
     glfwTerminate();
     return 0;
 }
