@@ -1,8 +1,8 @@
 ﻿  main.cpp
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(30,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(31,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(35,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(36,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(37,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\main.cpp(38,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-  Sablon.vcxproj -> C:\Users\Lakic\OneDrive\Desktop\Grafika3D\V7\x64\Debug\Sablon.exe
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(29,31): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(29,45): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(30,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(31,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(32,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(32,27): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+  Sablon.vcxproj -> C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\x64\Debug\Sablon.exe
