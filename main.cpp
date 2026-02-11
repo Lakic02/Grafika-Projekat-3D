@@ -38,6 +38,10 @@ std::vector<Viewer> visitors;
 enum CinemaState { START, ENTER, PROJECTION, EXIT };
 CinemaState currentState = START;
 
+// --- PROJEKCIJA ---
+unsigned int movieTextures[20]; // Niz za 20 frejmova filma
+float projectionTimer = 0.0f;   // Tajmer za trajanje projekcije
+
 // --- KAMERA ---
 glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 15.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.2f, -1.0f);
@@ -49,12 +53,12 @@ float lastX = 0, lastY = 0;
 float deltaTime = 0.0f, lastFrame = 0.0f;
 bool mousePressed = false;
 
-// Pozicija vrata za spawn (Y je 0.0f - najniži nivo)
+// Pozicija vrata za spawn
 glm::vec3 doorPosSpawn = glm::vec3(11.0f, 0.0f, -12.0f);
 
-// Funkcija za spawn sa random logikom i inicijalizacijom na nulu
 void spawnVisitors() {
     visitors.clear();
+    projectionTimer = 0.0f; // Resetujemo tajmer pri svakom novom ulasku
 
     std::vector<glm::vec3> occupiedSeatPositions;
     for (int r = 0; r < 5; r++) {
@@ -79,7 +83,6 @@ void spawnVisitors() {
 
     for (int i = 0; i < spawnCount; i++) {
         Viewer v;
-        // Zadatak 1: Svi se spawnuje na visini vrata (0.0f), bez obzira gde im je sedište
         v.currentPos = doorPosSpawn;
         v.targetPos = occupiedSeatPositions[i];
         v.reachedRow = false;
@@ -210,6 +213,12 @@ int main(void) {
     unsigned int doorOpenTex = setupTexture("res/open.png");
     unsigned int doorCloseTex = setupTexture("res/close.png");
 
+    // Učitavanje 20 tekstura filma (Zadatak 2)
+    for (int i = 0; i < 20; i++) {
+        std::string path = "res/slika" + std::to_string(i + 1) + ".jfif";
+        movieTextures[i] = setupTexture(path.c_str());
+    }
+
     float vertices[] = {
         -0.5f, -0.5f, 0.0f,   1,1,1,1,  0,0,  0,0,1,
          0.5f, -0.5f, 0.0f,   1,1,1,1,  1,0,  0,0,1,
@@ -256,35 +265,28 @@ int main(void) {
         lastFrame = (float)frameStartTime;
         processInput(window);
 
-        // --- LOGIKA KRETANJA POSITILACA SA KOREKCIJOM VISINE ---
+        // --- LOGIKA KRETANJA I TRANZICIJE U PROJEKCIJU ---
         if (currentState == ENTER) {
+            bool allSeated = true;
+            if (visitors.empty()) allSeated = false;
+
             for (auto& v : visitors) {
                 if (!v.reachedRow) {
-                    // 1. Kretanje po dubini (Z osa)
                     if (std::abs(v.currentPos.z - v.targetPos.z) > 0.05f) {
                         float dir = (v.targetPos.z > v.currentPos.z) ? 1.0f : -1.0f;
                         v.currentPos.z += dir * v.speed * deltaTime;
-
-                        // Zadatak 2: Penjanje uz stepenice dok hoda ka svom redu
-                        // Redovi su na Z = 0, 1.5, 3.0, 4.5, 6.0
-                        // Visine su na Y = 0, 0.5, 1.0, 1.5, 2.0
-                        // Logika: Uzmi broj redova koje je osoba vec presla
                         int passedRows = (int)(v.currentPos.z / 1.5f + 0.01f);
                         if (passedRows < 0) passedRows = 0;
-
                         v.currentPos.y = passedRows * 0.5f;
-
-                        // Zadatak 3: Penjanje ne sme preci visinu ciljanog sedista
                         if (v.currentPos.y > v.targetPos.y) v.currentPos.y = v.targetPos.y;
                     }
                     else {
                         v.currentPos.z = v.targetPos.z;
-                        v.currentPos.y = v.targetPos.y; // Finalna visina pri skretanju
+                        v.currentPos.y = v.targetPos.y;
                         v.reachedRow = true;
                     }
                 }
                 else if (!v.reachedSeat) {
-                    // 2. Kretanje po širini (X osa)
                     if (std::abs(v.currentPos.x - v.targetPos.x) > 0.05f) {
                         float dir = (v.targetPos.x > v.currentPos.x) ? 1.0f : -1.0f;
                         v.currentPos.x += dir * v.speed * deltaTime;
@@ -293,10 +295,23 @@ int main(void) {
                         v.currentPos.x = v.targetPos.x;
                         v.reachedSeat = true;
                     }
-                    // Održavaj visinu sedišta dok se krećeš kroz red
-                    v.currentPos.y = v.targetPos.y;
                 }
+
+                if (!v.reachedSeat) allSeated = false;
             }
+
+            // Zadatak 1: Ako su svi seli, pređi u PROJECTION
+            if (allSeated && !visitors.empty()) {
+                currentState = PROJECTION;
+                projectionTimer = 0.0f;
+            }
+        }
+
+        // --- LOGIKA PROJEKCIJE (Zadatak 2 & 3) ---
+        if (currentState == PROJECTION) {
+            projectionTimer += deltaTime;
+            // Ako je prošlo 20 sekundi, platno ostaje belo (Zadatak 3)
+            // Napomena: currentState ostaje PROJECTION ali logika crtanja će vratiti belu boju
         }
 
         glClearColor(0.01f, 0.01f, 0.02f, 1.0f);
@@ -312,12 +327,24 @@ int main(void) {
 
         glBindVertexArray(VAO);
 
-        // 1. PLATNO
+        // 1. PLATNO (Zadatak 2 i 3)
         glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
         screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
-        glUniform1i(useTexLoc, 0);
-        glUniform1f(ambLoc, (currentState == PROJECTION ? 0.3f : 0.0f));
+
+        bool isMoviePlaying = (currentState == PROJECTION && projectionTimer <= 20.0f);
+
+        if (isMoviePlaying) {
+            glUniform1i(useTexLoc, 1);
+            // Svakih 0.5s menjamo sliku (2 slike po sekundi)
+            int frameIndex = (int)(projectionTimer * 2.0f) % 20;
+            glBindTexture(GL_TEXTURE_2D, movieTextures[frameIndex]);
+            glUniform1f(ambLoc, 0.6f); // Ekran svetli tokom filma
+        }
+        else {
+            glUniform1i(useTexLoc, 0); // Belo platno
+            glUniform1f(ambLoc, 0.0f);
+        }
         glUniform4f(tintLoc, 1, 1, 1, 1);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
@@ -344,7 +371,7 @@ int main(void) {
             }
         }
 
-        // 4. LJUDI (Ljubičasti kvadri)
+        // 4. LJUDI
         glUniform1i(useTexLoc, 0);
         glUniform1f(ambLoc, 0.1f);
         for (auto& v : visitors) {
