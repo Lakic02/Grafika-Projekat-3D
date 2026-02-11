@@ -39,8 +39,15 @@ enum CinemaState { START, ENTER, PROJECTION, EXIT };
 CinemaState currentState = START;
 
 // --- PROJEKCIJA ---
-unsigned int movieTextures[20]; // Niz za 20 frejmova filma
-float projectionTimer = 0.0f;   // Tajmer za trajanje projekcije
+unsigned int movieTextures[20];
+float projectionTimer = 0.0f;
+
+// --- SVETLO ---
+struct Light {
+    glm::vec3 pos;
+    glm::vec3 color;
+    float intensity;
+};
 
 // --- KAMERA ---
 glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 15.0f);
@@ -58,7 +65,7 @@ glm::vec3 doorPosSpawn = glm::vec3(11.0f, 0.0f, -12.0f);
 
 void spawnVisitors() {
     visitors.clear();
-    projectionTimer = 0.0f; // Resetujemo tajmer pri svakom novom ulasku
+    projectionTimer = 0.0f;
 
     std::vector<glm::vec3> occupiedSeatPositions;
     for (int r = 0; r < 5; r++) {
@@ -101,6 +108,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 spawnVisitors();
             }
         }
+        if (key == GLFW_KEY_F1) currentState = START;
+        if (key == GLFW_KEY_F2) currentState = ENTER;
+        if (key == GLFW_KEY_F3) currentState = PROJECTION;
+        if (key == GLFW_KEY_F4) currentState = EXIT;
 
         if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
             if (currentState != START) return;
@@ -213,7 +224,6 @@ int main(void) {
     unsigned int doorOpenTex = setupTexture("res/open.png");
     unsigned int doorCloseTex = setupTexture("res/close.png");
 
-    // Učitavanje 20 tekstura filma (Zadatak 2)
     for (int i = 0; i < 20; i++) {
         std::string path = "res/slika" + std::to_string(i + 1) + ".jfif";
         movieTextures[i] = setupTexture(path.c_str());
@@ -234,6 +244,8 @@ int main(void) {
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    // PROŠIRENJE: Uključivanje normala (location 3)
+    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
 
     float sigVertices[] = {
         0.40f, -0.95f, 0.0f,  1,1,1,0.4f,  0,0,  0,0,1,
@@ -248,6 +260,8 @@ int main(void) {
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    // PROŠIRENJE: Uključivanje normala za potpis (takođe 12 float-ova po temenu)
+    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
 
     unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
     unsigned int viewLoc = glGetUniformLocation(unifiedShader, "uV");
@@ -257,6 +271,10 @@ int main(void) {
     unsigned int ambLoc = glGetUniformLocation(unifiedShader, "uAmb");
     unsigned int tintLoc = glGetUniformLocation(unifiedShader, "uTint");
 
+    unsigned int lightPosLoc = glGetUniformLocation(unifiedShader, "uLightPos");
+    unsigned int lightColLoc = glGetUniformLocation(unifiedShader, "uLightCol");
+    unsigned int lightIntLoc = glGetUniformLocation(unifiedShader, "uLightIntensity");
+
     double targetFrameTime = 1.0 / 75.0;
 
     while (!glfwWindowShouldClose(window)) {
@@ -265,11 +283,10 @@ int main(void) {
         lastFrame = (float)frameStartTime;
         processInput(window);
 
-        // --- LOGIKA KRETANJA I TRANZICIJE U PROJEKCIJU ---
+        // --- LOGIKA KRETANJA ---
         if (currentState == ENTER) {
             bool allSeated = true;
             if (visitors.empty()) allSeated = false;
-
             for (auto& v : visitors) {
                 if (!v.reachedRow) {
                     if (std::abs(v.currentPos.z - v.targetPos.z) > 0.05f) {
@@ -296,22 +313,34 @@ int main(void) {
                         v.reachedSeat = true;
                     }
                 }
-
                 if (!v.reachedSeat) allSeated = false;
             }
-
-            // Zadatak 1: Ako su svi seli, pređi u PROJECTION
             if (allSeated && !visitors.empty()) {
                 currentState = PROJECTION;
                 projectionTimer = 0.0f;
             }
         }
 
-        // --- LOGIKA PROJEKCIJE (Zadatak 2 & 3) ---
         if (currentState == PROJECTION) {
             projectionTimer += deltaTime;
-            // Ako je prošlo 20 sekundi, platno ostaje belo (Zadatak 3)
-            // Napomena: currentState ostaje PROJECTION ali logika crtanja će vratiti belu boju
+        }
+
+        // --- LOGIKA SVETLA (Prosirenje) ---
+        Light activeLight;
+        if (currentState == ENTER || currentState == EXIT) {
+            activeLight.pos = glm::vec3(0.0f, 8.0f, 0.0f); // Plafon
+            activeLight.color = glm::vec3(1.0f, 0.9f, 0.8f); // Topla bela
+            activeLight.intensity = 1.0f;
+        }
+        else if (currentState == PROJECTION && projectionTimer <= 20.0f) {
+            activeLight.pos = glm::vec3(0.0f, 3.5f, -11.0f); // Ispred platna
+            activeLight.color = glm::vec3(0.7f, 0.8f, 1.0f); // Filmska plava
+            activeLight.intensity = 0.8f;
+        }
+        else {
+            activeLight.pos = glm::vec3(0.0f, 0.0f, 0.0f);
+            activeLight.color = glm::vec3(0.0f, 0.0f, 0.0f);
+            activeLight.intensity = 0.0f;
         }
 
         glClearColor(0.01f, 0.01f, 0.02f, 1.0f);
@@ -320,6 +349,11 @@ int main(void) {
         glUseProgram(unifiedShader);
         glUniform1i(transLoc, 1);
 
+        // SLANJE PARAMETARA SVETLA U ŠEJDER (Prosirenje)
+        glUniform3fv(lightPosLoc, 1, glm::value_ptr(activeLight.pos));
+        glUniform3fv(lightColLoc, 1, glm::value_ptr(activeLight.color));
+        glUniform1f(lightIntLoc, activeLight.intensity);
+
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)mode->width / (float)mode->height, 0.1f, 100.0f);
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
@@ -327,22 +361,19 @@ int main(void) {
 
         glBindVertexArray(VAO);
 
-        // 1. PLATNO (Zadatak 2 i 3)
+        // 1. PLATNO
         glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
         screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
-
         bool isMoviePlaying = (currentState == PROJECTION && projectionTimer <= 20.0f);
-
         if (isMoviePlaying) {
             glUniform1i(useTexLoc, 1);
-            // Svakih 0.5s menjamo sliku (2 slike po sekundi)
             int frameIndex = (int)(projectionTimer * 2.0f) % 20;
             glBindTexture(GL_TEXTURE_2D, movieTextures[frameIndex]);
-            glUniform1f(ambLoc, 0.6f); // Ekran svetli tokom filma
+            glUniform1f(ambLoc, 0.6f);
         }
         else {
-            glUniform1i(useTexLoc, 0); // Belo platno
+            glUniform1i(useTexLoc, 0);
             glUniform1f(ambLoc, 0.0f);
         }
         glUniform4f(tintLoc, 1, 1, 1, 1);
