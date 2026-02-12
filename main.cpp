@@ -498,7 +498,7 @@ int main(void) {
         glUniform1i(useTexLoc, 1);
         for (int row = 0; row < 5; row++) {
             for (int col = 0; col < 10; col++) {
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), cinemaSeats[row][col].pos);
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), cinemaSeats[row][col].pos + glm::vec3(0.0f, 0.5f, 0.0f));
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
                 if (cinemaSeats[row][col].isBought) glUniform4f(tintLoc, 1.0f, 0.0f, 0.0f, 1.0f);
                 else if (cinemaSeats[row][col].isReserved) glUniform4f(tintLoc, 1.0f, 1.0f, 0.0f, 1.0f);
