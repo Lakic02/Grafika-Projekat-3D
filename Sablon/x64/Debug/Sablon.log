@@ -1,2 +1,7 @@
 ﻿  main.cpp
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(94,50): warning C4267: 'argument': conversion from 'size_t' to 'GLsizei', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(376,54): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\main.cpp(376,34): warning C4267: 'initializing': conversion from 'size_t' to 'const int', possible loss of data
   Sablon.vcxproj -> C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\x64\Debug\Sablon.exe
+  Copying native Assimp libraries...
+  C:\Users\Lakic\OneDrive\Desktop\New folder (2)\Grafika-Projekat-3D\x64\Debug\Sablon.deps.json

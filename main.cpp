@@ -14,6 +14,10 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 #include "Util.h"
 
 // --- LOGIKA SEDIŠTA ---
@@ -31,6 +35,7 @@ struct Viewer {
     bool reachedRow = false; // Kod ulaska: stigao do dubine reda. Kod izlaska: stigao do hodnika (X).
     bool reachedSeat = false; // Kod ulaska: stigao na sediste. Kod izlaska: stigao do vrata (Z).
     float speed = 1.0f;
+    int modelIndex; // Dodajemo indeks modela (0-14)
 };
 std::vector<Viewer> visitors;
 
@@ -48,6 +53,103 @@ struct Light {
     glm::vec3 color;
     float intensity;
 };
+
+struct ModelVertex {
+    glm::vec3 Position;
+    glm::vec4 Color;    // Tvoj shader traži layout(location = 1) in vec4 inCol
+    glm::vec2 TexCoords;
+    glm::vec3 Normal;
+};
+
+struct Mesh {
+    unsigned int VAO, VBO, EBO;
+    std::vector<unsigned int> indices;
+    void setupMesh(std::vector<ModelVertex> vertices, std::vector<unsigned int> indices) {
+        this->indices = indices;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(ModelVertex), &vertices[0], GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+        // Layout mora da se poklapa sa tvojim basic.vert
+        glEnableVertexAttribArray(0); // inPos
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(ModelVertex), (void*)0);
+        glEnableVertexAttribArray(1); // inCol
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(ModelVertex), (void*)offsetof(ModelVertex, Color));
+        glEnableVertexAttribArray(2); // inTex
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(ModelVertex), (void*)offsetof(ModelVertex, TexCoords));
+        glEnableVertexAttribArray(3); // inNormal
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(ModelVertex), (void*)offsetof(ModelVertex, Normal));
+
+        glBindVertexArray(0);
+    }
+    void Draw() {
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+};
+
+class Model {
+public:
+    std::vector<Mesh> meshes;
+    void loadModel(std::string path) {
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
+
+        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+            std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
+            return;
+        }
+        processNode(scene->mRootNode, scene);
+    }
+
+private:
+    void processNode(aiNode* node, const aiScene* scene) {
+        for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+            aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+            meshes.push_back(processMesh(mesh, scene));
+        }
+        for (unsigned int i = 0; i < node->mNumChildren; i++) {
+            processNode(node->mChildren[i], scene);
+        }
+    }
+
+    Mesh processMesh(aiMesh* mesh, const aiScene* scene) {
+        std::vector<ModelVertex> vertices;
+        std::vector<unsigned int> indices;
+
+        for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
+            ModelVertex vertex;
+            vertex.Position = glm::vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
+            vertex.Normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+            vertex.Color = glm::vec4(1.0f); // Podrazumevana bela boja
+            if (mesh->mTextureCoords[0])
+                vertex.TexCoords = glm::vec2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+            else
+                vertex.TexCoords = glm::vec2(0.0f, 0.0f);
+            vertices.push_back(vertex);
+        }
+        for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
+            aiFace face = mesh->mFaces[i];
+            for (unsigned int j = 0; j < face.mNumIndices; j++)
+                indices.push_back(face.mIndices[j]);
+        }
+        Mesh result;
+        result.setupMesh(vertices, indices);
+        return result;
+    }
+}; 
+
+std::vector<Model> personModels;
+std::vector<unsigned int> personTextures;
+int TOTAL_MODELS = 0;
 
 // --- KAMERA ---
 glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 10.0f);
@@ -80,6 +182,7 @@ void spawnVisitors() {
     if (totalOccupied == 0) return;
 
     std::default_random_engine engine(static_cast<unsigned int>(time(0)));
+    std::uniform_int_distribution<int> modelDist(0, TOTAL_MODELS - 1); // Distribucija za modele
     // Spawnujemo onoliko ljudi koliko ima kupljenih/rezervisanih mesta
     int spawnCount = totalOccupied;
 
@@ -95,6 +198,7 @@ void spawnVisitors() {
         v.reachedRow = false;
         v.reachedSeat = false;
         v.speed = speedDist(engine) * baseSpeed;
+        v.modelIndex = modelDist(engine);
         visitors.push_back(v);
     }
 }
@@ -205,22 +309,42 @@ unsigned int setupTexture(const char* filepath) {
     return tex;
 }
 
+// --- TEKSTURA LJUDI ---
+unsigned int humanTex0; //setupTexture("res/tekstura0.jpg");
+
 int main(void) {
+    // 1. Inicijalizacija GLFW
     if (!glfwInit()) return 1;
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
+    // 2. Kreiranje prozora
     GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
     GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Cinema Simulation", primaryMonitor, NULL);
-    if (!window) { glfwTerminate(); return 2; }
+    if (!window) {
+        glfwTerminate();
+        return 2;
+    }
+
+    // 3. Postavljanje konteksta (OBAVEZNO PRE GLEW-a)
     glfwMakeContextCurrent(window);
-    glewInit();
+
+    // 4. Inicijalizacija GLEW-a sa popravkom za glGenerateMipmap
+    glewExperimental = GL_TRUE;
+    if (glewInit() != GLEW_OK) {
+        glfwTerminate();
+        return 3;
+    }
+
+    // Postavke ulaza i callbacks
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetKeyCallback(window, key_callback);
 
+    // Inicijalizacija sedišta
     for (int r = 0; r < 5; r++)
         for (int c = 0; c < 10; c++)
             cinemaSeats[r][c].pos = glm::vec3((c - 4.5f) * 1.5f, r * 0.5f, r * 1.5f);
@@ -229,17 +353,48 @@ int main(void) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // 5. Učitavanje resursa (Sada je bezbedno jer su funkcije učitane)
     unsigned int unifiedShader = createShader("basic.vert", "basic.frag");
     unsigned int signatureTex = setupTexture("res/signature.png");
     unsigned int seatTex = setupTexture("stolica.png");
     unsigned int doorOpenTex = setupTexture("res/open.png");
     unsigned int doorCloseTex = setupTexture("res/close.png");
 
+    // Učitaj teksturu čoveka (Albedo mapa koju si poslao)
+    struct ModelPath {
+        std::string model;
+        std::string texture;
+    };
+
+    std::vector<ModelPath> resourcePaths = {
+        {"res/covek0.obj", "res/tekstura0.jpg"},
+        {"res/covek1.obj", "res/tekstura1.png"},
+
+    };
+
+    // Automatski postavlja broj modela na osnovu liste iznad
+    const int TOTAL_MODELS_COUNT = resourcePaths.size();
+    TOTAL_MODELS = TOTAL_MODELS_COUNT;// Program sada zna tačan broj unetih modela
+
+    for (int i = 0; i < TOTAL_MODELS_COUNT; i++) {
+        Model m;
+        std::cout << "Ucitavam model: " << resourcePaths[i].model << std::endl;
+        m.loadModel(resourcePaths[i].model);
+        personModels.push_back(m);
+
+        unsigned int tex = setupTexture(resourcePaths[i].texture.c_str());
+        if (tex == 0) {
+            std::cout << "GRESKA: Tekstura nije pronadjena: " << resourcePaths[i].texture << std::endl;
+        }
+        personTextures.push_back(tex);
+    }
+
     for (int i = 0; i < 20; i++) {
         std::string path = "res/slika" + std::to_string(i + 1) + ".jfif";
         movieTextures[i] = setupTexture(path.c_str());
     }
 
+    // Bufferi (VAO, VBO)
     float vertices[] = {
         -0.5f, -0.5f, 0.0f,   1,1,1,1,  0,0,  0,0,1,
          0.5f, -0.5f, 0.0f,   1,1,1,1,  1,0,  0,0,1,
@@ -286,13 +441,17 @@ int main(void) {
 
     double targetFrameTime = 1.0 / 75.0;
 
+   /// Model viewerModel;
+    //viewerModel.loadModel("res/covek0.obj");
+
+
     while (!glfwWindowShouldClose(window)) {
         double frameStartTime = glfwGetTime();
         deltaTime = (float)frameStartTime - lastFrame;
         lastFrame = (float)frameStartTime;
         processInput(window);
 
-        // --- LOGIKA KRETANJA LJUDI ---
+        // --- LOGIKA KRETANJA ---
         if (currentState == ENTER) {
             bool allSeated = true;
             if (visitors.empty()) allSeated = false;
@@ -330,23 +489,21 @@ int main(void) {
             }
         }
         else if (currentState == EXIT) {
-            // --- ZADATAK 1: LOGIKA IZLASKA ---
             for (auto& v : visitors) {
-                if (!v.reachedRow) { // Prva faza izlaska: Od sedišta do hodnika (X osa)
+                if (!v.reachedRow) {
                     if (std::abs(v.currentPos.x - doorPosSpawn.x) > 0.05f) {
                         float dir = (doorPosSpawn.x > v.currentPos.x) ? 1.0f : -1.0f;
                         v.currentPos.x += dir * v.speed * deltaTime;
                     }
                     else {
                         v.currentPos.x = doorPosSpawn.x;
-                        v.reachedRow = true; // Stigao u hodnik
+                        v.reachedRow = true;
                     }
                 }
-                else if (!v.reachedSeat) { // Druga faza: Niz hodnik do vrata (Z osa i Y visina)
+                else if (!v.reachedSeat) {
                     if (std::abs(v.currentPos.z - doorPosSpawn.z) > 0.05f) {
                         float dir = (doorPosSpawn.z > v.currentPos.z) ? 1.0f : -1.0f;
                         v.currentPos.z += dir * v.speed * deltaTime;
-                        // Logika za stepenice unazad
                         int currentStairRow = (int)(v.currentPos.z / 1.5f + 0.5f);
                         if (currentStairRow < 0) currentStairRow = 0;
                         v.currentPos.y = currentStairRow * 0.5f;
@@ -354,19 +511,16 @@ int main(void) {
                     else {
                         v.currentPos.z = doorPosSpawn.z;
                         v.currentPos.y = doorPosSpawn.y;
-                        v.reachedSeat = true; // Stigao do vrata
+                        v.reachedSeat = true;
                     }
                 }
             }
-
-            // --- ZADATAK 2: BRISANJE I RESET NA START ---
             visitors.erase(std::remove_if(visitors.begin(), visitors.end(), [](const Viewer& v) {
-                return v.reachedSeat; // Brišemo one koji su stigli do vrata
+                return v.reachedSeat;
                 }), visitors.end());
 
             if (visitors.empty()) {
                 currentState = START;
-                // Opciono: Resetuj sedišta za novu turu
                 for (int r = 0; r < 5; r++) for (int c = 0; c < 10; c++) {
                     cinemaSeats[r][c].isReserved = false;
                     cinemaSeats[r][c].isBought = false;
@@ -378,15 +532,11 @@ int main(void) {
             projectionTimer += deltaTime;
             if (projectionTimer >= 20.0f) {
                 currentState = EXIT;
-                // Resetujemo flagove za svakog posetioca da bi krenuli ispočetka putanju izlaska
-                for (auto& v : visitors) {
-                    v.reachedRow = false;
-                    v.reachedSeat = false;
-                }
+                for (auto& v : visitors) { v.reachedRow = false; v.reachedSeat = false; }
             }
         }
 
-        // --- LOGIKA SVETLA ---
+        // --- SVETLO ---
         Light activeLight;
         if (currentState == ENTER || currentState == EXIT) {
             activeLight.pos = glm::vec3(0.0f, 8.0f, 1.5f);
@@ -418,18 +568,19 @@ int main(void) {
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
+        // CRTANJE (POD, PLAFON, ZIDOVI...)
         glBindVertexArray(VAO);
-        glUniform1i(useTexLoc, 0);
 
-        // --- 1. POD ---
+        // 1. POD
         glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 6.5f));
         floorModel = glm::rotate(floorModel, glm::radians(-90.0f), glm::vec3(1, 0, 0));
         floorModel = glm::scale(floorModel, glm::vec3(30.0f, 40.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(floorModel));
+        glUniform1i(useTexLoc, 0);
         glUniform4f(tintLoc, 0.4f, 0.2f, 0.1f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 2. PLAFON ---
+        // 2. PLAFON
         glm::mat4 ceilModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 6.5f));
         ceilModel = glm::rotate(ceilModel, glm::radians(90.0f), glm::vec3(1, 0, 0));
         ceilModel = glm::scale(ceilModel, glm::vec3(30.0f, 40.0f, 1.0f));
@@ -437,14 +588,14 @@ int main(void) {
         glUniform4f(tintLoc, 0.15f, 0.15f, 0.15f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 3. PREDNJI ZID ---
+        // 3. PREDNJI ZID
         glm::mat4 frontWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, -12.5f));
         frontWallModel = glm::scale(frontWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(frontWallModel));
         glUniform4f(tintLoc, 0.4f, 0.4f, 0.4f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- ZADNJI ZID ---
+        // ZADNJI ZID
         glm::mat4 backWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 9.9f));
         backWallModel = glm::rotate(backWallModel, glm::radians(180.0f), glm::vec3(0, 1, 0));
         backWallModel = glm::scale(backWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
@@ -452,7 +603,7 @@ int main(void) {
         glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 4. BOCNI ZIDOVI ---
+        // 4. BOCNI ZIDOVI
         glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
         glm::mat4 leftWall = glm::translate(glm::mat4(1.0f), glm::vec3(-10.0f, 5.0f, 6.5f));
         leftWall = glm::rotate(leftWall, glm::radians(90.0f), glm::vec3(0, 1, 0));
@@ -466,12 +617,11 @@ int main(void) {
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightWall));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 5. PLATNO ---
+        // 5. PLATNO
         glm::mat4 screenModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.5f, -12.0f));
         screenModel = glm::scale(screenModel, glm::vec3(18.0f, 8.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(screenModel));
-        bool isMoviePlaying = (currentState == PROJECTION && projectionTimer <= 20.0f);
-        if (isMoviePlaying) {
+        if (currentState == PROJECTION && projectionTimer <= 20.0f) {
             glUniform1i(useTexLoc, 1);
             int frameIndex = (int)(projectionTimer * 2.0f) % 20;
             glBindTexture(GL_TEXTURE_2D, movieTextures[frameIndex]);
@@ -484,7 +634,7 @@ int main(void) {
         glUniform4f(tintLoc, 1, 1, 1, 1);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 6. VRATA ---
+        // 6. VRATA
         glm::mat4 doorModel = glm::translate(glm::mat4(1.0f), glm::vec3(11.0f, 2.0f, -12.0f));
         doorModel = glm::scale(doorModel, glm::vec3(3.0f, 5.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(doorModel));
@@ -493,7 +643,7 @@ int main(void) {
         glBindTexture(GL_TEXTURE_2D, (currentState == ENTER || currentState == EXIT ? doorOpenTex : doorCloseTex));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        // --- 7. SEDIŠTA ---
+        // 7. SEDIŠTA
         glBindTexture(GL_TEXTURE_2D, seatTex);
         glUniform1i(useTexLoc, 1);
         for (int row = 0; row < 5; row++) {
@@ -507,25 +657,35 @@ int main(void) {
             }
         }
 
-        // --- 8. LJUDI ---
-        glUniform1i(useTexLoc, 0);
-        glUniform1f(ambLoc, 0.1f);
+		//humanTex0 = setupTexture("res/tekstura0.jpg");
+
+        // --- 8. LJUDI (3D Modeli) ---
+        glUniform1i(useTexLoc, 1);
+        glUniform1f(ambLoc, 0.2f);
+        glUniform4f(tintLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
         for (auto& v : visitors) {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), v.currentPos + glm::vec3(0, 0.5f, 0));
-            model = glm::scale(model, glm::vec3(0.6f, 1.2f, 0.2f));
+            // 1. Postavi transformaciju
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), v.currentPos);
+            model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(0.01f, 0.01f, 0.01f));
+            // Ako su modeli okrenuti naopako, ovde dodaj glm::rotate
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-            glUniform4f(tintLoc, 0.6f, 0.1f, 0.8f, 1.0f);
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+            // 2. Aktivira teksturu specifičnu za taj model
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, personTextures[v.modelIndex]);
+
+            // 3. Nacrtaj model specifičan za tog posetioca
+            for (unsigned int i = 0; i < personModels[v.modelIndex].meshes.size(); i++) {
+                personModels[v.modelIndex].meshes[i].Draw();
+            }
         }
+        glUniform1i(useTexLoc, 0);
 
         // --- 9. STEPENICE ---
         glBindVertexArray(VAO);
-        glUniform1i(useTexLoc, 0);
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
         for (int row = 0; row < 5; row++) {
-            // Gazište
             glm::mat4 stepModel = glm::mat4(1.0f);
             stepModel = glm::translate(stepModel, glm::vec3(0.0f, row * 0.5f - 0.05f, row * 1.5f));
             stepModel = glm::rotate(stepModel, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -533,7 +693,6 @@ int main(void) {
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(stepModel));
             glUniform4f(tintLoc, 0.2f, 0.1f, 0.05f, 1.0f);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-            // Čelo
             if (row > 0) {
                 glm::mat4 frontModel = glm::mat4(1.0f);
                 frontModel = glm::translate(frontModel, glm::vec3(0.0f, row * 0.5f - 0.3f, row * 1.5f - 0.75f));
@@ -550,10 +709,9 @@ int main(void) {
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
         glUniform1i(useTexLoc, 1);
-        glUniform1f(ambLoc, 0.0f);
-        glUniform4f(tintLoc, 1, 1, 1, 1);
         glBindTexture(GL_TEXTURE_2D, signatureTex);
         glBindVertexArray(sigVAO);
+        glUniform4f(tintLoc, 1, 1, 1, 1);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         glEnable(GL_DEPTH_TEST);
 
@@ -565,13 +723,3 @@ int main(void) {
     glfwTerminate();
     return 0;
 }
-
-
-//TO DO:/*
-// poraviti potpis se ne vidi korz stepenice
-// poraviti visinu stenepica
-// model ljudi umesto kvarta
-// 
-// 
-// 
-// */
