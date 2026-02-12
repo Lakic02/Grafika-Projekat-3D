@@ -50,7 +50,7 @@ struct Light {
 };
 
 // --- KAMERA ---
-glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 15.0f);
+glm::vec3 cameraPos = glm::vec3(0.0f, 4.0f, 10.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.2f, -1.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
@@ -165,9 +165,9 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) nextPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
 
-    nextPos.x = glm::clamp(nextPos.x, -14.0f, 14.0f);
+    nextPos.x = glm::clamp(nextPos.x, -9.9f, 14.0f);
     nextPos.y = glm::clamp(nextPos.y, 0.5f, 9.5f);
-    nextPos.z = glm::clamp(nextPos.z, -11.5f, 14.9f);
+    nextPos.z = glm::clamp(nextPos.z, -11.5f, 9.79f);
 
     cameraPos = nextPos;
 
@@ -445,7 +445,7 @@ int main(void) {
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         // --- ZADNJI ZID ---
-        glm::mat4 backWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 15.0f));
+        glm::mat4 backWallModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 9.9f));
         backWallModel = glm::rotate(backWallModel, glm::radians(180.0f), glm::vec3(0, 1, 0));
         backWallModel = glm::scale(backWallModel, glm::vec3(30.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(backWallModel));
@@ -454,7 +454,7 @@ int main(void) {
 
         // --- 4. BOCNI ZIDOVI ---
         glUniform4f(tintLoc, 0.35f, 0.35f, 0.35f, 1.0f);
-        glm::mat4 leftWall = glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 5.0f, 6.5f));
+        glm::mat4 leftWall = glm::translate(glm::mat4(1.0f), glm::vec3(-10.0f, 5.0f, 6.5f));
         leftWall = glm::rotate(leftWall, glm::radians(90.0f), glm::vec3(0, 1, 0));
         leftWall = glm::scale(leftWall, glm::vec3(40.0f, 10.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftWall));
@@ -518,20 +518,7 @@ int main(void) {
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         }
 
-        // --- 9. POTPIS ---
-        glDisable(GL_DEPTH_TEST);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-        glUniform1i(useTexLoc, 1);
-        glUniform1f(ambLoc, 0.0f);
-        glUniform4f(tintLoc, 1, 1, 1, 1);
-        glBindTexture(GL_TEXTURE_2D, signatureTex);
-        glBindVertexArray(sigVAO);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        glEnable(GL_DEPTH_TEST);
-
-        // --- 10. STEPENICE ---
+        // --- 9. STEPENICE ---
         glBindVertexArray(VAO);
         glUniform1i(useTexLoc, 0);
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -556,6 +543,19 @@ int main(void) {
                 glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             }
         }
+
+        // --- 10. POTPIS ---
+        glDisable(GL_DEPTH_TEST);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+        glUniform1i(useTexLoc, 1);
+        glUniform1f(ambLoc, 0.0f);
+        glUniform4f(tintLoc, 1, 1, 1, 1);
+        glBindTexture(GL_TEXTURE_2D, signatureTex);
+        glBindVertexArray(sigVAO);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        glEnable(GL_DEPTH_TEST);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
