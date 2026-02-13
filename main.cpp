@@ -364,11 +364,17 @@ int main(void) {
     struct ModelPath {
         std::string model;
         std::string texture;
+        float scale;
     };
 
     std::vector<ModelPath> resourcePaths = {
-        {"res/covek0.obj", "res/tekstura0.jpg"},
-        {"res/covek1.obj", "res/tekstura1.png"},
+      //  {"res/covek0.obj", "res/tekstura0.jpg", 0.01f},
+      //  {"res/covek1.obj", "res/tekstura1.png", 0.01f},
+      //  {"res/covek2.obj", "res/tekstura2.png", 0.01f},
+     //   {"res/covek3.obj", "res/tekstura3.jpg", 0.01f},
+       //{"res/covek4.obj", "res/crvena.png", 0.01f},
+       // {"res/covek5.obj", "res/tekstura5.png", 0.01f},
+         {"res/covek6.obj", "res/tozu.png", 1.0f},
 
     };
 
@@ -668,7 +674,11 @@ int main(void) {
             // 1. Postavi transformaciju
             glm::mat4 model = glm::translate(glm::mat4(1.0f), v.currentPos);
             model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            model = glm::scale(model, glm::vec3(0.01f, 0.01f, 0.01f));
+            
+            float s = resourcePaths[v.modelIndex].scale;
+            model = glm::scale(model, glm::vec3(s, s, s));
+
+            //model = glm::scale(model, glm::vec3(0.01f, 0.01f, 0.01f));
             // Ako su modeli okrenuti naopako, ovde dodaj glm::rotate
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
