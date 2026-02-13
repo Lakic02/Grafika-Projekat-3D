@@ -374,7 +374,15 @@ int main(void) {
      //   {"res/covek3.obj", "res/tekstura3.jpg", 0.01f},
        //{"res/covek4.obj", "res/crvena.png", 0.01f},
        // {"res/covek5.obj", "res/tekstura5.png", 0.01f},
-         {"res/covek6.obj", "res/tozu.png", 1.0f},
+      //   {"res/covek6.obj", "res/tozu.png", 1.0f},
+	//	 {"res/covek7.obj", "res/plava.png", 0.008f},
+	//	{"res/covek8.obj", "res/braon.png", 0.03f},
+      //   {"res/covek9.obj", "res/tekstura9.png", 0.035f},
+   //       {"res/covek10.obj", "res/braon.png", 0.004f},
+        //  {"res/covek11.obj", "res/tekstura11.png", 0.2f},
+      //    {"res/covek12.obj", "res/tekstura12.png", 0.14f},
+     //     {"res/covek13.obj", "res/tekstura13.png", 0.017f},
+          {"res/covek14.obj", "res/tekstura14.BMP", 0.13f},
 
     };
 
